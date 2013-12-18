@@ -244,8 +244,6 @@
 #define SDMMC_DEV_OFFSET			0x00000000
 #define EMMC_DEV_OFFSET				0x00000014
 
-#define CONFIG_BOOTCOMMAND	"movi read kernel 0 20008000;movi read rootfs 0 21000000 100000;bootz 20008000 21000000"
-
 #ifdef CONFIG_RAMDUMP_MODE
 #define CONFIG_BOOTCOMMAND_RAMDUMP	"fastboot"
 #endif
@@ -333,9 +331,37 @@
 
 /* Configuration of ROOTFS_ATAGS */
 #define CONFIG_ROOTFS_ATAGS
-#ifdef CONFIG_ROOTFS_ATAGS
-#define CONFIG_EXTRA_ENV_SETTINGS       "rootfslen= 100000"
-#endif
+#define CONFIG_EXTRA_ENV_SETTINGS \
+	"rootfslen=100000\0" \
+	"addruImage=0x20007000\0" \
+	"addrdtb=0x21f00000\0" \
+	"addrramdisk=0x22000000\0" \
+	"loadaddr=0x22000000\0" \
+	"console=ttySAC3,115200n8\0" \
+	"mmcdev=0:2\0" \
+	"mmcargs=setenv bootargs console=${console}\0" \
+	"loadbootscript=fatload mmc ${mmcdev} ${loadaddr} boot.scr\0" \
+	"bootscript=echo Running bootscript from mmc${mmcdev} ...; " \
+	"source ${loadaddr}\0" \
+	"loaduimage=fatload mmc ${mmcdev} ${addruImage} uImage\0" \
+	"loaddtb=fatload mmc ${mmcdev} ${addrdtb} board.dtb\0" \
+	"loadramdisk=fatload mmc ${mmcdev} ${addrramdisk} uInitrd\0" \
+	"mmcboot=echo Booting from mmc${mmcdev} ...; " \
+	"run mmcargs; " \
+	"bootm ${addruImage} ${addrramdisk} ${addrdtb}\0" \
+
+#define CONFIG_BOOTCOMMAND \
+	"if mmc rescan ${mmcdev}; then " \
+	"if run loadbootscript; then " \
+	"run bootscript; " \
+	"else " \
+	"if run loaduimage; then " \
+	"run loadramdisk; " \
+	"run loaddtb; " \
+	"run mmcboot; " \
+	"fi; " \
+	"fi; " \
+	"fi"
 
 /* U-boot copy size from boot Media to DRAM.*/
 #define BL2_START_OFFSET	(CONFIG_BL2_OFFSET/512)
