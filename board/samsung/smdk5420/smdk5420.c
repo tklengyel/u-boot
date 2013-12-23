@@ -216,6 +216,22 @@ void dram_init_banksize(void)
 
 int board_eth_init(bd_t *bis)
 {
+	int i;
+	uchar mac[6];
+	unsigned int guid_high = readl(EXYNOS5_GUID_HIGH);
+	unsigned int guid_low = readl(EXYNOS5_GUID_LOW);
+
+	for (i = 0; i < 2; i++)
+		mac[i] = (guid_high >> (8 * (1 - i))) & 0xFF;
+
+	for (i = 0; i < 4; i++)
+		mac[i+2] = (guid_low >> (8 * (3 - i))) & 0xFF;
+
+	/* mark it as not multicast and outside official 80211 MAC namespace */
+	mac[0] = (mac[0] & ~0x1) | 0x2;
+
+	eth_setenv_enetaddr("ethaddr", mac);
+
 #ifdef CONFIG_SMC911X
 	if (smc9115_pre_init())
 		return -1;
