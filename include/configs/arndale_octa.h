@@ -339,7 +339,7 @@
 	"loadaddr=0x22000000\0" \
 	"console=ttySAC3,115200n8\0" \
 	"mmcdev=0:2\0" \
-	"mmcargs=setenv bootargs console=${console}\0" \
+	"mmcargs=setenv bootargs console=${console} mac=${ethaddr}\0" \
 	"loadbootscript=fatload mmc ${mmcdev} ${loadaddr} boot.scr\0" \
 	"bootscript=echo Running bootscript from mmc${mmcdev} ...; " \
 	"source ${loadaddr}\0" \
