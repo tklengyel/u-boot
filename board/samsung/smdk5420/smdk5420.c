@@ -50,6 +50,15 @@ DECLARE_GLOBAL_DATA_PTR;
 unsigned int pmic;
 unsigned int nr_dram_banks = 0;
 
+static void clk_audss_init(void)
+{
+	unsigned int val = readl(EXYNOS5_AUDSS_BASE);
+
+	val |= 0x1;
+
+	writel(val, EXYNOS5_AUDSS_BASE);
+}
+
 static int init_nr_dram_banks(void)
 {
 	int evt_num = (GetEvtNum()<<12)|(GetEvtSubNum()<<8)|(GetPopOption()<<4)|(GetDdrType());
@@ -138,6 +147,8 @@ int board_init(void)
 	display_pmic_info();
 
 	display_boot_device_info();
+
+	clk_audss_init();
 
 	gd->bd->bi_boot_params = (PHYS_SDRAM_1 + 0x100UL);
 
