@@ -190,6 +190,24 @@
 #define CONFIG_USB_EHCI_EXYNOS
 #define CONFIG_USB_STORAGE
 
+/* USB Networking options */
+#define CONFIG_USB_HOST_ETHER
+#define CONFIG_USB_ETHER_ASIX
+
+/* netboot */
+#define CONFIG_CMD_NET
+#define CONFIG_CMD_DHCP
+#define CONFIG_CMD_BOOTZ
+#define CONFIG_BOOTP_SUBNETMASK
+#define CONFIG_BOOTP_GATEWAY
+#define CONFIG_BOOTP_HOSTNAME
+#define CONFIG_BOOTP_BOOTPATH
+
+#ifdef CONFIG_CMD_NET
+#define CONFIG_CMD_PXE
+#define CONFIG_MENU
+#endif
+
 /* OHCI : Host 1.0 */
 #define CONFIG_USB_OHCI
 #define CONFIG_EXYNOS_USBD3
@@ -332,7 +350,10 @@
 /* Configuration of ROOTFS_ATAGS */
 #define CONFIG_ROOTFS_ATAGS
 #define CONFIG_EXTRA_ENV_SETTINGS \
-	"rootfslen=100000\0" \
+	"fdt_addr_r=0x21f00000\0" \
+	"kernel_addr_r=0x20007000\0" \
+	"pxefile_addr_r=0x23000000\0" \
+	"ramdisk_addr_r=0x22000000\0" \
 	"addruImage=0x20007000\0" \
 	"addrdtb=0x21f00000\0" \
 	"addrramdisk=0x22000000\0" \
