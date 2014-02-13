@@ -365,6 +365,11 @@ static int asix_read_mac(struct eth_device *eth)
 		memcpy(eth->enetaddr, buf, ETH_ALEN);
 	}
 
+	if (!is_valid_ether_addr(eth->enetaddr)) {
+		eth_parse_enetaddr(getenv("ethaddr"), buf);
+		memcpy(eth->enetaddr, buf, ETH_ALEN);
+	}
+
 	return 0;
 }
 
