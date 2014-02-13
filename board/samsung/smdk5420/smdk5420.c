@@ -396,6 +396,10 @@ int board_late_init(void)
 		setenv("bootcmd", CONFIG_FACTORY_RESET_BOOTCOMMAND);
 	}
 
+#ifdef CONFIG_PREBOOT
+	setenv("preboot", CONFIG_PREBOOT);
+#endif
+
 	return 0;
 }
 

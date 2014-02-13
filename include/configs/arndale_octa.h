@@ -55,6 +55,8 @@
 /* Configuration of bl1 partition size */
 #define CONFIG_BL_MONITOR
 
+#define CONFIG_PREBOOT "usb start"
+
 /* Power Management is enabled */
 #define CONFIG_PM
 #define CONFIG_PM_VDD_ARM	1.00
