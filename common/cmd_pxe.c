@@ -26,12 +26,19 @@
 
 #define MAX_TFTP_PATH_LEN 127
 
+const char *pxe_default_paths[] = {
+	"default-" CONFIG_SYS_ARCH "-" CONFIG_SYS_SOC, 
+	"default-" CONFIG_SYS_ARCH,
+	"default",
+	NULL
+};
+
 /*
  * Like getenv, but prints an error if envvar isn't defined in the
  * environment.  It always returns what getenv does, so it can be used in
  * place of getenv without changing error handling otherwise.
  */
-static char *from_env(char *envvar)
+static char *from_env(const char *envvar)
 {
 	char *ret;
 
@@ -59,6 +66,9 @@ static int format_mac_pxe(char *outbuf, size_t outbuf_len)
 	char *p, *ethaddr;
 
 	ethaddr = from_env("ethaddr");
+
+	if (!ethaddr)
+		ethaddr = from_env("usbethaddr");
 
 	if (!ethaddr)
 		return -ENOENT;
@@ -131,14 +141,14 @@ static int get_bootfile_path(const char *file_path, char *bootfile_path,
 	return 1;
 }
 
-static int (*do_getfile)(char *file_path, char *file_addr);
+static int (*do_getfile)(const char *file_path, char *file_addr);
 
-static int do_get_tftp(char *file_path, char *file_addr)
+static int do_get_tftp(const char *file_path, char *file_addr)
 {
 	char *tftp_argv[] = {"tftp", NULL, NULL, NULL};
 
 	tftp_argv[1] = file_addr;
-	tftp_argv[2] = file_path;
+	tftp_argv[2] = (void *)file_path;
 
 	if (do_tftpb(NULL, 0, 3, tftp_argv))
 		return -ENOENT;
@@ -148,12 +158,12 @@ static int do_get_tftp(char *file_path, char *file_addr)
 
 static char *fs_argv[5];
 
-static int do_get_ext2(char *file_path, char *file_addr)
+static int do_get_ext2(const char *file_path, char *file_addr)
 {
 #ifdef CONFIG_CMD_EXT2
 	fs_argv[0] = "ext2load";
 	fs_argv[3] = file_addr;
-	fs_argv[4] = file_path;
+	fs_argv[4] = (void *)file_path;
 
 	if (!do_ext2load(NULL, 0, 5, fs_argv))
 		return 1;
@@ -161,12 +171,12 @@ static int do_get_ext2(char *file_path, char *file_addr)
 	return -ENOENT;
 }
 
-static int do_get_fat(char *file_path, char *file_addr)
+static int do_get_fat(const char *file_path, char *file_addr)
 {
 #ifdef CONFIG_CMD_FAT
 	fs_argv[0] = "fatload";
 	fs_argv[3] = file_addr;
-	fs_argv[4] = file_path;
+	fs_argv[4] = (void *)file_path;
 
 	if (!do_fat_fsload(NULL, 0, 5, fs_argv))
 		return 1;
@@ -182,7 +192,7 @@ static int do_get_fat(char *file_path, char *file_addr)
  *
  * Returns 1 for success, or < 0 on error.
  */
-static int get_relfile(char *file_path, void *file_addr)
+static int get_relfile(const char *file_path, void *file_addr)
 {
 	size_t path_len;
 	char relfile[MAX_TFTP_PATH_LEN+1];
@@ -221,7 +231,7 @@ static int get_relfile(char *file_path, void *file_addr)
  *
  * Returns 1 on success, or < 0 for error.
  */
-static int get_pxe_file(char *file_path, void *file_addr)
+static int get_pxe_file(const char *file_path, void *file_addr)
 {
 	unsigned long config_file_size;
 	char *tftp_filesize;
@@ -258,7 +268,7 @@ static int get_pxe_file(char *file_path, void *file_addr)
  *
  * Returns 1 on success or < 0 on error.
  */
-static int get_pxelinux_path(char *file, void *pxefile_addr_r)
+static int get_pxelinux_path(const char *file, void *pxefile_addr_r)
 {
 	size_t base_len = strlen(PXELINUX_DIR);
 	char path[MAX_TFTP_PATH_LEN+1];
@@ -355,7 +365,7 @@ do_pxe_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	char *pxefile_addr_str;
 	unsigned long pxefile_addr_r;
-	int err;
+	int err, i = 0;
 
 	do_getfile = do_get_tftp;
 
@@ -378,12 +388,19 @@ do_pxe_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	 */
 	if (pxe_uuid_path((void *)pxefile_addr_r) > 0
 		|| pxe_mac_path((void *)pxefile_addr_r) > 0
-		|| pxe_ipaddr_paths((void *)pxefile_addr_r) > 0
-		|| get_pxelinux_path("default", (void *)pxefile_addr_r) > 0) {
+		|| pxe_ipaddr_paths((void *)pxefile_addr_r) > 0) {
 
 		printf("Config file found\n");
 
 		return 0;
+	}
+
+	while (pxe_default_paths[i]) {
+		if (get_pxelinux_path(pxe_default_paths[i], (void *)pxefile_addr_r) > 0) {
+			printf("Config file found\n");
+			return 0;
+		}
+		i++;
 	}
 
 	printf("Config file not found\n");
@@ -398,7 +415,7 @@ do_pxe_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
  *
  * Returns 1 on success or < 0 on error.
  */
-static int get_relfile_envaddr(char *file_path, char *envaddr_name)
+static int get_relfile_envaddr(const char *file_path, const char *envaddr_name)
 {
 	unsigned long file_addr;
 	char *envaddr;
@@ -445,13 +462,17 @@ static int get_relfile_envaddr(char *file_path, char *envaddr_name)
  * list - lets these form a list, which a pxe_menu struct will hold.
  */
 struct pxe_label {
+	char num[4];
 	char *name;
 	char *menu;
 	char *kernel;
 	char *append;
 	char *initrd;
+	char *fdt;
+	int ipappend;
 	int attempted;
 	int localboot;
+	int localboot_val;
 	struct list_head list;
 };
 
@@ -517,6 +538,9 @@ static void label_destroy(struct pxe_label *label)
 	if (label->initrd)
 		free(label->initrd);
 
+	if (label->fdt)
+		free(label->fdt);
+
 	free(label);
 }
 
@@ -529,18 +553,9 @@ static void label_destroy(struct pxe_label *label)
 static void label_print(void *data)
 {
 	struct pxe_label *label = data;
-	const char *c = label->menu ? label->menu : label->kernel;
+	const char *c = label->menu ? label->menu : label->name;
 
-	printf("%s:\t%s\n", label->name, c);
-
-	if (label->kernel)
-		printf("\t\tkernel: %s\n", label->kernel);
-
-	if (label->append)
-		printf("\t\tappend: %s\n", label->append);
-
-	if (label->initrd)
-		printf("\t\tinitrd: %s\n", label->initrd);
+	printf("%s:\t%s\n", label->num, c);
 }
 
 /*
@@ -598,34 +613,43 @@ static int label_localboot(struct pxe_label *label)
  * If the label specifies an 'append' line, its contents will overwrite that
  * of the 'bootargs' environment variable.
  */
-static void label_boot(struct pxe_label *label)
+static int label_boot(struct pxe_label *label)
 {
 	char *bootm_argv[] = { "bootm", NULL, NULL, NULL, NULL };
+	char initrd_str[22];
+	char mac_str[29] = "";
+	char ip_str[68] = "";
+	char *bootargs;
 	int bootm_argc = 3;
+	int len = 0;
 
 	label_print(label);
 
 	label->attempted = 1;
 
 	if (label->localboot) {
-		label_localboot(label);
-		return;
+		if (label->localboot_val >= 0)
+			label_localboot(label);
+		return 0;
 	}
 
 	if (label->kernel == NULL) {
 		printf("No kernel given, skipping %s\n",
 				label->name);
-		return;
+		return 1;
 	}
 
 	if (label->initrd) {
 		if (get_relfile_envaddr(label->initrd, "ramdisk_addr_r") < 0) {
 			printf("Skipping %s for failure retrieving initrd\n",
 					label->name);
-			return;
+			return 1;
 		}
 
-		bootm_argv[2] = getenv("ramdisk_addr_r");
+		bootm_argv[2] = initrd_str;
+		strcpy(bootm_argv[2], getenv("ramdisk_addr_r"));
+		strcat(bootm_argv[2], ":");
+		strcat(bootm_argv[2], getenv("filesize"));
 	} else {
 		bootm_argv[2] = "-";
 	}
@@ -633,24 +657,81 @@ static void label_boot(struct pxe_label *label)
 	if (get_relfile_envaddr(label->kernel, "kernel_addr_r") < 0) {
 		printf("Skipping %s for failure retrieving kernel\n",
 				label->name);
-		return;
+		return 1;
+	}
+
+	if (label->ipappend & 0x1) {
+		sprintf(ip_str, " ip=%s:%s:%s:%s",
+			getenv("ipaddr"), getenv("serverip"),
+			getenv("gatewayip"), getenv("netmask"));
+		len += strlen(ip_str);
+	}
+
+	if (label->ipappend & 0x2) {
+		int err;
+		strcpy(mac_str, " BOOTIF=");
+		err = format_mac_pxe(mac_str + 8, sizeof(mac_str) - 8);
+		if (err < 0)
+			mac_str[0] = '\0';
+		len += strlen(mac_str);
 	}
 
 	if (label->append)
-		setenv("bootargs", label->append);
+		len += strlen(label->append);
+
+	if (len) {
+		bootargs = malloc(len + 1);
+		if (!bootargs)
+			return 1;
+		bootargs[0] ='\0';
+		if (label->append)
+			strcpy(bootargs, label->append);
+		strcat(bootargs, ip_str);
+		strcat(bootargs, mac_str);
+
+		setenv("bootargs", bootargs);
+		printf("append: %s\n", bootargs);
+
+		free(bootargs);
+	}
 
 	bootm_argv[1] = getenv("kernel_addr_r");
 
 	/*
-	 * fdt usage is optional.  If there is an fdt_addr specified, we will
-	 * pass it along to bootm, and adjust argc appropriately.
+	 * fdt usage is optional:
+	 * It handles the following scenarios. All scenarios are exclusive
+	 *
+	 * Scenario 1: If fdt_addr_r specified and "fdt" label is defined in
+	 * pxe file, retrieve fdt blob from server. Pass fdt_addr_r to bootm,
+	 * and adjust argc appropriately.
+	 *
+	 * Scenario 2: If there is an fdt_addr specified, pass it along to
+	 * bootm, and adjust argc appropriately.
+	 *
+	 * Scenario 3: fdt blob is not available.
 	 */
-	bootm_argv[3] = getenv("fdt_addr");
+	bootm_argv[3] = getenv("fdt_addr_r");
+
+	/* if fdt label is defined then get fdt from server */
+	if (bootm_argv[3] && label->fdt) {
+		if (get_relfile_envaddr(label->fdt, "fdt_addr_r") < 0) {
+			printf("Skipping %s for failure retrieving fdt\n",
+					label->name);
+			return;
+		}
+	} else
+		bootm_argv[3] = getenv("fdt_addr");
 
 	if (bootm_argv[3])
 		bootm_argc = 4;
 
 	do_bootm(NULL, 0, bootm_argc, bootm_argv);
+
+#ifdef CONFIG_CMD_BOOTZ
+	/* Try booting a zImage if do_bootm returns */
+	do_bootz(NULL, 0, bootm_argc, bootm_argv);
+#endif
+	return 1;
 }
 
 /*
@@ -672,6 +753,9 @@ enum token_type {
 	T_DEFAULT,
 	T_PROMPT,
 	T_INCLUDE,
+	T_FDT,
+	T_ONTIMEOUT,
+	T_IPAPPEND,
 	T_INVALID
 };
 
@@ -699,6 +783,9 @@ static const struct token keywords[] = {
 	{"append", T_APPEND},
 	{"initrd", T_INITRD},
 	{"include", T_INCLUDE},
+	{"fdt", T_FDT},
+	{"ontimeout", T_ONTIMEOUT,},
+	{"ipappend", T_IPAPPEND,},
 	{NULL, T_INVALID}
 };
 
@@ -898,12 +985,7 @@ static int parse_integer(char **c, int *dst)
 		return -EINVAL;
 	}
 
-	if (strict_strtoul(t.val, 10, &temp) < 0) {
-		printf("Expected unsigned integer: %s\n", t.val);
-		return -EINVAL;
-	}
-
-	*dst = (int)temp;
+	*dst = simple_strtol(t.val, &temp, 10);
 
 	free(t.val);
 
@@ -1002,10 +1084,8 @@ static int parse_label_menu(char **c, struct pxe_menu *cfg,
 
 	switch (t.type) {
 	case T_DEFAULT:
-		if (cfg->default_label)
-			free(cfg->default_label);
-
-		cfg->default_label = strdup(label->name);
+		if (!cfg->default_label)
+			cfg->default_label = strdup(label->name);
 
 		if (!cfg->default_label)
 			return -ENOMEM;
@@ -1039,6 +1119,7 @@ static int parse_label(char **c, struct pxe_menu *cfg)
 	char *s = *c;
 	struct pxe_label *label;
 	int err;
+	int localboot;
 
 	label = label_create();
 	if (!label)
@@ -1088,8 +1169,18 @@ static int parse_label(char **c, struct pxe_menu *cfg)
 				err = parse_sliteral(c, &label->initrd);
 			break;
 
+		case T_FDT:
+			if (!label->fdt)
+				err = parse_sliteral(c, &label->fdt);
+			break;
+
 		case T_LOCALBOOT:
-			err = parse_integer(c, &label->localboot);
+			label->localboot = 1;
+			err = parse_integer(c, &label->localboot_val);
+			break;
+
+		case T_IPAPPEND:
+			err = parse_integer(c, &label->ipappend);
 			break;
 
 		case T_EOL:
@@ -1145,6 +1236,7 @@ static int parse_pxefile_top(char *p, struct pxe_menu *cfg, int nest_level)
 		err = 0;
 		switch (t.type) {
 		case T_MENU:
+			cfg->prompt = 1;
 			err = parse_menu(&p, cfg, b, nest_level);
 			break;
 
@@ -1157,6 +1249,7 @@ static int parse_pxefile_top(char *p, struct pxe_menu *cfg, int nest_level)
 			break;
 
 		case T_DEFAULT:
+		case T_ONTIMEOUT:
 			err = parse_sliteral(&p, &label_name);
 
 			if (label_name) {
@@ -1174,7 +1267,7 @@ static int parse_pxefile_top(char *p, struct pxe_menu *cfg, int nest_level)
 			break;
 
 		case T_PROMPT:
-			err = parse_integer(&p, &cfg->prompt);
+			eol_or_eof(&p);
 			break;
 
 		case T_EOL:
@@ -1257,6 +1350,8 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	struct list_head *pos;
 	struct menu *m;
 	int err;
+	int i = 1;
+	char *default_num = NULL;
 
 	/*
 	 * Create a menu and add items for all the labels.
@@ -1269,18 +1364,23 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	list_for_each(pos, &cfg->labels) {
 		label = list_entry(pos, struct pxe_label, list);
 
-		if (menu_item_add(m, label->name, label) != 1) {
+		sprintf(label->num, "%d", i++);
+		if (menu_item_add(m, label->num, label) != 1) {
 			menu_destroy(m);
 			return NULL;
 		}
+		if (cfg->default_label &&
+			(strcmp(label->name, cfg->default_label) == 0))
+			default_num = label->num;
+
 	}
 
 	/*
 	 * After we've created items for each label in the menu, set the
 	 * menu's default label if one was specified.
 	 */
-	if (cfg->default_label) {
-		err = menu_default_set(m, cfg->default_label);
+	if (default_num) {
+		err = menu_default_set(m, default_num);
 		if (err != 1) {
 			if (err != -ENOENT) {
 				menu_destroy(m);
@@ -1347,8 +1447,11 @@ static void handle_pxe_menu(struct pxe_menu *cfg)
 	 * we give up.
 	 */
 
-	if (err == 1)
-		label_boot(choice);
+	if (err == 1) {
+		err = label_boot(choice);
+		if (!err)
+			return;
+	}
 	else if (err != -ENOENT)
 		return;
 
