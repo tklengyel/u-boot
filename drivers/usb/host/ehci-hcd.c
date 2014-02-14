@@ -398,9 +398,8 @@ ehci_submit_async(struct usb_device *dev, unsigned long pipe, void *buffer,
 		ALIGN((uint32_t)buffer + length, ARCH_DMA_MINALIGN));
 
 	/* Check that the TD processing happened */
-	if (token & 0x80) {
-		printf("EHCI timed out on TD - token=%#x\n", token);
-	}
+	if (token & 0x80)
+		debug("EHCI timed out on TD - token=%#x\n", token);
 
 	/* Disable async schedule. */
 	cmd = ehci_readl(&hcor->or_usbcmd);
