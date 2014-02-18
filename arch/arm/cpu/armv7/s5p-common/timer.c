@@ -52,7 +52,7 @@ int timer_init(void)
  */
 unsigned long get_timer(unsigned long base)
 {
-	return get_timer_masked() - base;
+	return (get_timer_masked()/get_tbclk()) - base;
 }
 
 /* delay x useconds */
@@ -81,7 +81,7 @@ void __udelay(unsigned long usec)
 	}
 
 	/* get current timestamp */
-	tmp = get_timer(0);
+	tmp = get_timer_masked();
 
 	/* if setting this fordward will roll time stamp */
 	/* reset "advancing" timestamp to 0, set lastinc value */
@@ -127,7 +127,7 @@ unsigned long get_timer_masked(void)
  */
 unsigned long long get_ticks(void)
 {
-	return get_timer(0);
+	return get_timer_masked();
 }
 
 /*
@@ -136,5 +136,10 @@ unsigned long long get_ticks(void)
  */
 unsigned long get_tbclk(void)
 {
+	/* To avoid divide by zero, added an additional check */
+#ifdef CONFIG_SYS_HZ
 	return CONFIG_SYS_HZ;
+#else
+	return 1;
+#endif
 }
